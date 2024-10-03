@@ -1,0 +1,13 @@
+---
+title: "Data Science Homework 3"
+author: "ak5357"
+date: "2024-10-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(haven)
+```
+
