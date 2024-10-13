@@ -9,5 +9,68 @@ output: html_document
 library(tidyverse)
 library(readxl)
 library(haven)
+library(dplyr)
 ```
+
+
+## Problem 2
+
+### _**NHANES Accelerometers**_
+
+Load, tidy, merge, and otherwise organize the data sets. Your final dataset should
+
+* include all originally observed variables
+* exclude participants less than 21 years of age, and those with missing demographic data
+* encode data with reasonable variable classes (i.e. not numeric, and using factors with the ordering of tables and plots in mind)
+
+**Load and Tidy the Data**
+
+```{r nhanes_data_import}
+# Import demographic (covariate) data
+covar_df = read_csv("data/nhanes_covar.csv", skip = 4, trim_ws = TRUE) |> 
+  janitor::clean_names() |> 
+  filter(age >= 21) |> # exclude participants under 21 years of age
+  drop_na() |> # exclude those with missing demographic data
+  mutate(
+    sex = factor( # convert 'sex' column to factor
+      case_when(
+        sex == 1 ~ "male",
+        sex == 2 ~ "female"),
+      levels = c("male", "female")), # specify order for 'sex'
+    education = factor( # convert 'education' column to factor
+      case_when(
+        education == 1 ~ "Less than high school",
+        education == 2 ~ "High school equivalent",
+        education == 3 ~ "More than high school"),
+      levels = c("Less than high school", "High school equivalent", "More than high school")) # specify order for 'education'
+    )
+
+# Import NHANES Accelerometer Data
+accel_df = read_csv("data/nhanes_accel.csv") |> 
+  janitor::clean_names() |> 
+  pivot_longer(
+    cols = starts_with("min"),
+    names_to = "time",
+    values_to = "mims",
+    names_prefix = "min"
+  ) |> 
+  mutate(
+    time = lubridate::as_hms(as.numeric(time) * 60)
+  )
+
+```
+
+sex
+1 = male
+2 = female
+
+education
+1 = Less than high school
+2 =  High school equivalent
+3  = More than high school 
+
+
+
+
+
 
