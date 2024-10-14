@@ -10,6 +10,7 @@ library(tidyverse)
 library(readxl)
 library(haven)
 library(dplyr)
+library(lubridate)
 ```
 
 
@@ -54,21 +55,11 @@ accel_df = read_csv("data/nhanes_accel.csv") |>
     values_to = "mims",
     names_prefix = "min"
   ) |> 
-  mutate(
-    time = lubridate::as_hms(as.numeric(time) * 60)
-  )
+  mutate( # change time column datatype to <time>
+    time = hms::hms(as.numeric(time)*60)
+  ) 
 
 ```
-
-sex
-1 = male
-2 = female
-
-education
-1 = Less than high school
-2 =  High school equivalent
-3  = More than high school 
-
 
 
 
