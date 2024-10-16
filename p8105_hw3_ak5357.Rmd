@@ -11,6 +11,22 @@ library(readxl)
 library(haven)
 library(dplyr)
 library(lubridate)
+
+# DEFAULT SETTINGS FOR 
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%",
+  fig.align = "center"
+)
+
+theme_set(
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, margin = margin(b = 5), face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, margin = margin(b = 10), color = "azure4", face = "bold", size = 8)
+  )
+)
 ```
 
 
@@ -18,15 +34,11 @@ library(lubridate)
 
 ### _**NHANES Accelerometers**_
 
-Load, tidy, merge, and otherwise organize the data sets. Your final dataset should
+#### **Load and Tidy the Data**
 
-* include all originally observed variables
-* exclude participants less than 21 years of age, and those with missing demographic data
-* encode data with reasonable variable classes (i.e. not numeric, and using factors with the ordering of tables and plots in mind)
+The following code block imports two .csv datasets with information about 250 participants from a study by the National Health and Nutrition Examination Survey (NHANES). The datasets include basic sociodemographic characteristics (ie. age, sex, education) and accelerometer usage data. The accelerometer usage data is expressed as Monitor-Independent Movement Summary, or MIMS.
 
-**Load and Tidy the Data**
-
-```{r nhanes_data_import}
+```{r nhanes_data_import, message = FALSE}
 # Import demographic (covariate) data
 covar_df = read_csv("data/nhanes_covar.csv", skip = 4, trim_ws = TRUE) |> 
   janitor::clean_names() |> 
@@ -35,9 +47,9 @@ covar_df = read_csv("data/nhanes_covar.csv", skip = 4, trim_ws = TRUE) |>
   mutate(
     sex = factor( # convert 'sex' column to factor
       case_when(
-        sex == 1 ~ "male",
-        sex == 2 ~ "female"),
-      levels = c("male", "female")), # specify order for 'sex'
+        sex == 1 ~ "Male",
+        sex == 2 ~ "Female"),
+      levels = c("Male", "Female")), # specify order for 'sex'
     education = factor( # convert 'education' column to factor
       case_when(
         education == 1 ~ "Less than high school",
@@ -56,10 +68,158 @@ accel_df = read_csv("data/nhanes_accel.csv") |>
     names_prefix = "min"
   ) |> 
   mutate( # change time column datatype to <time>
-    time = hms::hms(as.numeric(time)*60)
-  ) 
-
+    #time = hms::hms(as.numeric(time)*60)
+    time = as.POSIXct(as.numeric(time) * 60, tz = "UTC")
+  ) |> 
+  filter( # exclude those with missing demographic data
+    seqn %in% pull(covar_df, seqn)
+  )
 ```
+
+#### **Reader-Friendly Table**
+
+The table below shows the number of men and women in each education category. It looks like there is an even split between men and women in all categories except "High school equivalent", where there are significantly more men than women. 
+
+```{r tbl_edu_dist_sex, echo = FALSE}
+# CREATE TABLE
+tbl_edu_dist_sex =
+  covar_df |> 
+  count(education, sex) |> 
+  pivot_wider(
+    names_from = sex,
+    values_from = n
+  ) |> 
+  rename_with(~ tools::toTitleCase(.)) |>
+  knitr::kable()
+
+# SHOW TABLE
+tbl_edu_dist_sex
+```
+
+#### **Visualizing the Data**
+
+The visualization below depicts the age distributions for men and women in each education category. I chose to represent these through a three-facet histogram with stacked bars and set values for bin width.
+
+The multi-facet plot emphasizes that the age distribution is being compared between education categories. Stacked bars are less visually overwhelming than dodge-position bars and help to visualize the proportion of men vs. women in each education/age category. I set the bin width values to 5 because it's easy to interpret for a wider audience. I also made minor aesthetic and formatting changes to the labels for a more professional-looking output.
+
+
+```{r ggp_age_dist_edu_sex, echo = FALSE}
+# CREATE HISTOGRAM
+ggp_age_dist_edu_sex =
+  covar_df |> 
+  # Create plot ---------------------
+  ggplot(aes(x = age, fill = sex)) +
+  geom_histogram(color = "black", binwidth = 5) +
+  # Organize plot -------------------
+  facet_grid(. ~ education) +
+  labs(
+    title = "Age Distribution by Sex in each Education Category",
+    subtitle = "Source: NHANES",
+    x = "Age (years)",
+    y = "Count",
+    fill = "Sex:"
+  )
+
+# SHOW VISUALIZATION
+ggp_age_dist_edu_sex
+```
+
+#### **Analyzing the Data**
+
+The following scatterplot depicts the participants' total activity over the day (24-hour period), calculated as the sum of minute-by-minute MIMS measurements from the accelerometer. The data is stratified by education category and sex. The smoothed lines in the plot depict the overall trend for each education/sex strata.
+
+```{r ggp_activity_dist_age_edu_sex, warning = FALSE, echo = FALSE}
+# CREATE SCATTERPLOT
+ggp_activity_dist_age_edu_sex =
+  # Manipulate data -----------------
+  accel_df |> 
+  group_by(seqn) |> 
+  summarize(
+    total_activity = sum(mims)
+  ) |> 
+  full_join(covar_df, "seqn") |> 
+  # Create plots --------------------
+  ggplot(aes(x = age, y = total_activity, color = sex)) +
+  # Create trendline ---------------
+  geom_smooth(se = FALSE, size = 0.6) +
+  # Create scatterplot --------------
+  geom_point() +
+  # Organize scatterplot ------------
+  facet_grid(. ~ education) +
+  labs(
+    title = "Total Activity by Age in each Education Category",
+    subtitle = "Source: NHANES",
+    x = "Age (years)",
+    y = "Total Activity",
+    color = "Sex:"
+  )
+
+# SHOW PLOT
+ggp_activity_dist_age_edu_sex
+```
+
+**Interpreting the plot:**
+
+Based on the trendlines in the plot above, I believe it is unclear whether sex has a modifying effect on the relationship between age and activity. For both the "High school equivalent" and "More than high school" groups, it appears that the female participants were more active over the course of the 24-hour study period. However, this pattern does not extend to the "Less than high school" group.
+
+However, in my optinion, education may have a modifying effect on the relationship between age and activity. The slope of the trendlines for both genders decrease in steepness from left to right across the three graphs. It could be that education level has a greater association with physical activity for younger participants, as higher education levels may lead to more sedentary professions.
+
+#### **Average Activity over the Study Period**
+
+The following three-panel plot shows the 24-hour activity time courses for each education level, with sex indicated by color. Each point on the plot represents the average MIMS measurement from all participants from a certain education/sex subgroup. The smooth lines modeled over the points help visualize the general trend of average activity among the participants during the 24-hour study period.
+
+For this visual, I chose to depict the average minute-by-minute activity for each subgroup rather than representing all study participants on the graph. I felt this would make it easier to visually interpret overall differences between the subgroups. However, one big limitation is that this method does not depict variation within the subgroups. If the variation itself is important to the overall story, then this could be an issue.
+
+```{r ggp_time_course, echo = FALSE}
+# CREATE SCATTERPLOT
+ggp_time_course =
+  # Manipulate data -----------------
+  accel_df |> 
+  full_join(covar_df, "seqn") |> 
+  group_by(time, education, sex) |> 
+  summarize(
+    average_activity = mean(mims)
+  ) |> 
+  # Create scatterplot --------------
+  ggplot(aes(x = time, y = average_activity, color = sex, fill = sex)) +
+  geom_point(shape = 21, aes(fill = sex), color = "white", stroke = 0.5, alpha = 0.5) +
+  geom_smooth(aes(color = sex), size = 0.8) + 
+  scale_x_datetime(date_labels = "%I %p",  # Format x-axis labels to show hours with AM/PM
+                   breaks = scales::date_breaks("6 hour")) +
+  # Organize scatterplot ------------
+  facet_grid(. ~ education) +
+  labs(
+    title = "24-Hour Activity Time Course for each Education Category",
+    subtitle = "Source: NHANES",
+    x = "Time",
+    y = "Activity (MIMS by minute)",
+    color = "Sex:"
+  ) +
+  # Aesthetics ----------------------
+  scale_color_manual( # slightly darker colors for lines, -10 lum in HSL
+    values = c("Female" = "darkcyan", "Male" = "darkred")) +
+  guides(fill = "none")
+
+# SHOW PLOT
+ggp_time_course
+```
+
+**Interpreting the plot:**
+
+_**Similarities aross all groups:**_ Based on the plot, the minute-by-minute average activity levels of each education/sex subgroup of participants are higher during the daytime (around 8AM - 8PM) than during the night time (around 8PM - 8AM). All subgroups' average activity is lowest around 4AM, indicating that the subgroups on average may be asleep at this time. During the morning, there is a steady increase in minute-by-minute activity for each subgroup between around 6-11AM and a steady decrease in the slope between around 7PM-12AM.
+
+_**Differences between the sexes:**_ Across all education groups, it appears that the average activity among women is slightly higher during daytime "working hours" (around 9AM-6PM) than the men's. It is also interesting that average male energy level in the "More than high school" group has a noticeable dip at around 4PM.
+
+_**Differences between education groups:**_ In my opinion, the most noticeable differences between the education groups are the peak level of average activity and the slope of the trendline during "working hours". I predict that these differences could be attributed to work environment, which is known to differ by education level. However, this is just my speculation. More study is needed to draw statistically significant conclusions or determine causal associations.
+
+
+
+
+
+
+
+
+
 
 
 
